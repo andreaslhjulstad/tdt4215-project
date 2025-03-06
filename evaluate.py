@@ -52,9 +52,6 @@ def calculate_ndcg(recommendations: DataFrame, actual: DataFrame):
         ]
         ideal_ground_truth = sorted(prediction_vector, reverse=True)
 
-        print(prediction_vector)
-        print(ideal_ground_truth)
-
         dcg_val = dcg(prediction_vector)
         idcg_val = dcg(ideal_ground_truth)
 
