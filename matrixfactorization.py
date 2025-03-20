@@ -44,8 +44,6 @@ class MatrixFactorization:
     def predict(self, interactions: pd.DataFrame):
         user_article_matrix = create_user_article_matrix(interactions)
 
-        print(user_article_matrix)
-
         users = user_article_matrix.index
         articles = user_article_matrix.columns
 
@@ -64,7 +62,7 @@ class MatrixFactorization:
         for _ in range(self.n_iterations):
             for u in users:
                 for i in articles:
-                    user_interaction = user_article_matrix.loc[u][i]
+                    user_interaction = user_article_matrix.loc[u, i]
                     if not pd.isna(user_interaction):
                         user_factor = user_factor_map[u]
                         item_factor = item_factor_map[i]
