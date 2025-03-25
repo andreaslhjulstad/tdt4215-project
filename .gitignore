@@ -1,6 +1,9 @@
 # Dataset
 data/
 
+# Analysis
+analysis_output/
+
 # IDE folders
 .vscode
 .idea
