@@ -5,17 +5,18 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 from stop_words import get_stop_words
-from sklearn.metrics.pairwise import linear_kernel
+from sklearn.metrics.pairwise import linear_kernel, cosine_similarity
 import scipy.sparse as sp 
 
 
 
-def train_vectorizer(articles: pd.DataFrame, use_lda=False, topic_count=50):
+def train_vectorizer(articles: pd.DataFrame, topic_count: int, use_lda=False):
     """
-   Creates a TF-IDF vector for each article using a custom column (words). The TfidfVectorizer transforms each article’s bag of words into a sparse vector of scores.
+   Creates a TF-IDF or LDA matrix representing the provided articles.
 
     Parameters:
         articles (pd.DataFrame): Standard articles DF.
+        use_lda (bool): Flag for toggling between methods
 
     Returns:
         sp.csr_matrix: A sparse score vector (here labeled matrix)
@@ -58,7 +59,7 @@ def train_vectorizer(articles: pd.DataFrame, use_lda=False, topic_count=50):
 
     if not use_lda:
         # Create TfidfVectorizer using these stopwrods
-        vectorizer = TfidfVectorizer(stop_words=custom_stop_words, max_features=5000)
+        vectorizer = TfidfVectorizer(stop_words=custom_stop_words, max_features=1000)
         matrix = vectorizer.fit_transform(articles['words'])
         return matrix
     else:
@@ -67,12 +68,12 @@ def train_vectorizer(articles: pd.DataFrame, use_lda=False, topic_count=50):
         matrix = vectorizer.fit_transform(articles['words'])
 
         # Train lda model
-        lda = LatentDirichletAllocation(n_components=topic_count)
+        lda = LatentDirichletAllocation(n_components=topic_count, max_iter=10, random_state=1)
         matrix = lda.fit_transform(matrix)
         return matrix
 
 
-def recommend_for_user(article_ids: list, articles: pd.DataFrame, tfidf_matrix: sp.csr_matrix, k: int):
+def recommend_for_user(article_ids: list, articles: pd.DataFrame, tfidf_matrix: sp.csr_matrix, use_lda: bool, k: int):
     """
     Recommend top_k articles for a given user based on cosine similarity (linear kernel).
 
@@ -98,8 +99,13 @@ def recommend_for_user(article_ids: list, articles: pd.DataFrame, tfidf_matrix: 
     
 
     # Create user vector by averaging the tfidf scores for all the articles they have read
-    user_vector = tfidf_matrix[indexes].mean(axis=0)
-    user_vector = sp.csr_matrix(user_vector)  # Convert from np.matrix to sparse (for the cosine sim func)
+    user_vector = []
+    if not use_lda:
+        user_vector = tfidf_matrix[indexes].mean(axis=0)
+        user_vector = sp.csr_matrix(user_vector)  # Convert from np.matrix to sparse (for the cosine sim func)
+    else:
+        user_vector = np.mean(tfidf_matrix[indexes], axis=0).reshape(1, -1)
+
 
     # Calculate cosine similarity (here: linear kernel) between user vector and the "universal" matrix
     # Then, exclude already read articles
@@ -144,7 +150,7 @@ def main():
     # Train matrix once based on this combined set of articles
     tfidf_matrix = train_vectorizer(combined)
 
-    recommended = recommend_for_user(article_ids, combined, tfidf_matrix, 10)
+    recommended = recommend_for_user(article_ids, combined, tfidf_matrix, False, 10)
     print(recommended)
 
     for article_id in recommended:
@@ -164,41 +170,100 @@ if __name__ == "__main__":
     main()
 
 
-# Results from running on all users with only categories x10, no view filtering, days=15:
-# Total recommendations: 233160
-# TPs: 214
-# Precision: 0.0009
 
-
-
-# Equal weights, topics_# = 40, max_features = 1000
-#Precision: 0.0040
-#nDCG: 0.0151
-
-# Equal weights, topics_# = 50, max_features = 1000
-#Precision: 0.0148, 0.0025
-#nDCG: 0.0796, 0.0099
+# På alle brukere, korrigert:
+# Equal weights, topics_# = 100, max_features = 1000 
+# Precision: 0.0005
+# nDCG: 0.0021
     
-# Equal weights, topics_# = 55, max_features = 1000
-#Precision: 0.0010, 0.0051
-#nDCG: 0.0048, 0.0220
-    
+# Equal weights, topics_# = 80, max_features = 1000 
+# Precision: 0.0034
+# nDCG: 0.0171
+
+# Equal weights, topics_# = 72, max_features = 1000 
+# Precision: 0.0035     # 0.0008
+# nDCG: 0.0130          0.0028
+
+# Equal weights, topics_# = 70, max_features = 1000
+# Precision: 0.0052
+# nDCG: 0.0486
+
 # Equal weights, topics_# = 60, max_features = 1000
-#Precision: 0.0085
-#nDCG: 0.0322
-    
+# Precision: 0.0049     # 0.0011 (cosine sim)
+# nDCG: 0.0231          # 0.0047 (cosine sim)
 
-
-# På alle brukere:
 # Equal weights, topics_# = 50, max_features = 1000
-#Precision: 0.0040
-#nDCG: 0.0132
+# Precision: 0.0034
+# nDCG: 0.0101
+    
+# Equal weights, topics_# = 40, max_features = 1000 
+# Precision: 0.0013
+# nDCG: 0.0052
+
+# Equal weights, topics_# = 20, max_features = 1000 
+# Precision: 0.0008
+# nDCG: 0.0025
+
+
+    
+# seed=69
+# Topics_# = 72:
+# Precision: 0.0014
+# nDCG: 0.0066
+
+# Topics_# = 50:
+# Precision: 0.0022     0.0006 (max iter 20)
+# nDCG: 0.0097          0.0026 (max iter 20)
+    
+# Topics_# = 20, max iter 20:
+# Precision: 0.0004
+# nDCG: 0.0014  
     
 
 
+# seed = 1
+# Topics_# = 20, max_iter = 10:
+# Precision: 0.0009
+# nDCG: 0.0035
+    
+# Topics_# = 50, max_iter = 10:
+# Precision: 0.0025
+# nDCG: 0.0096
+
+# Topics_# = 55, max_iter = 10: 
+# Precision: 0.0024
+# nDCG: 0.0082
+
+# Topics_# = 56, max_iter = 10: 
+# Precision: 0.0032
+# nDCG: 0.0111
+
+# Topics_# = 57, max_iter = 10: 
+# Precision: 0.0034
+# nDCG: 0.0184
+    
+# Topics_# = 58, max_iter = 10: 
+# Precision: 0.0039
+# nDCG: 0.0152
+
+# Topics_# = 60, max_iter = 10:
+# Precision: 0.0034
+# nDCG: 0.0125
+
+# Topics_# = 65, max_iter = 10:
+# Precision: 0.0012
+# nDCG: 0.0038
+
+# Topics_# = 70, max_iter = 10:
+# Precision: 0.0004
+# nDCG: 0.0014
+
+    
 
 # TODO:
     # prøve recency filter på artikler brukeren allerede har lest også - > vil trolig påvirke gjennomsnittet
+
+    # Oppdatere documentasjon
 
     # Ta en titt på disse brukerne:
     # Calculated nDCG for user: 2424496 at 1.0000

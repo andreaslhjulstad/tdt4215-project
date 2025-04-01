@@ -126,11 +126,11 @@ def content(use_lda=False):
     users = np.array(list(set(history.index) & set(validation_data.index)))
 
     # Select users at random
-    user_sample = np.random.choice(users, size=1000)
+    # user_sample = np.random.choice(users, size=1000)
 
 
     # Limit the impressions to only those the users in the user sample have interacted with
-    history = history[history.index.isin(users)]
+    history = history[history.index.isin(users)] # TOGGLE WITH USERS OR USER_SAMPLE
 
     # Collect all article IDs read by these users
     all_article_ids = set(history["article_id_fixed"].explode())
@@ -153,7 +153,7 @@ def content(use_lda=False):
 
     matrix = []
     if use_lda:
-        matrix = CB.train_vectorizer(combined, use_lda=True, topic_count=200)
+        matrix = CB.train_vectorizer(combined, 59, use_lda=True)
     else:
         # Create a sparse score vector for the articles in the corpus
         matrix = CB.train_vectorizer(combined)
@@ -166,7 +166,7 @@ def content(use_lda=False):
     recommendations_dict = {}
 
     # Loop through the users in the sample and generate recommendations
-    for user_id in users:
+    for user_id in users: # TOGGLE WITH USERS OR USER_SAMPLE
         article_ids = history.loc[user_id]["article_id_fixed"]
         article_ids = [id for id in article_ids if id in id_to_index]
 
@@ -175,7 +175,7 @@ def content(use_lda=False):
 
         # Get recommendations for user and cast to list of ints
         recommended_ids = [int(id) for id in CB.recommend_for_user(
-            article_ids, combined, matrix, 10)]
+            article_ids, combined, matrix, use_lda, 10)]
 
         recommendations_dict[user_id] = recommended_ids
         print(f"Calculated recommendations for user: {user_id}")
