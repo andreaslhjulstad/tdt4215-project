@@ -29,3 +29,7 @@ def create_user_article_matrix(behaviors: pd.DataFrame):
         pd.SparseDtype(float, np.nan)
     )
     return sparse_user_article_matrix
+
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
