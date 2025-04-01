@@ -1,4 +1,3 @@
-import datetime
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
@@ -75,10 +74,6 @@ def calculate_ndcg(recommendations: DataFrame, actual: DataFrame):
     return system_ndcg
 
 
-def content_lda():
-    pass
-
-
 def collaborative():
     behaviors = pd.read_parquet("./data/train/behaviors.parquet")
     history = pd.read_parquet('./data/train/history.parquet').set_index(
@@ -117,82 +112,43 @@ def collaborative():
     print(f"nDCG: {ndcg:.4f}")
 
 
-def content(use_lda=False):
+def content(n_topics=50, n_days=15, n_features=1000, n_recommendations=10, sample_users=False, n_iterations=10, n_samples=1000, use_lda=False):
+    """
+    Recommends articles using content-based filtering. Uses either LDA or TF-IDF, depending on specification. 
+
+    Parameters:
+        n_topics (int): Number of topics to use for LDA if applicable, default=50.
+        n_days (int): Number of days to include (backwards from set date) in recency filter, default=15.
+        n_features (int): Number of max features when vectorizing, default=1000.
+        n_recommendations (int): Number of recommendations to compute for each user.
+        sample_users (bool): Optional flag for enabling user sampling instead of using all users, default=False.
+        n_iterations (int): Number of max LDA iterations, default=10.
+        n_samples (int): Number of sampled users if applicable, default=1000.
+        use_lda (bool): Flag for toggling LDA or TF-IDF, default=False.
+
+    Returns:
+        sp.csr_matrix: Matrix with vector representations of the articles.
+    """
+
     validation_data = pd.read_parquet("./data/validation/history.parquet").set_index("user_id")
     history = pd.read_parquet('./data/train/history.parquet').set_index("user_id")
-
 
     # Only get the users that are in both the training set and validation set
     users = np.array(list(set(history.index) & set(validation_data.index)))
 
+    if sample_users:
     # Select users at random
-    # user_sample = np.random.choice(users, size=1000)
+        user_sample = np.random.choice(users, size=n_samples)
+        users = user_sample
 
+    # Compute recommendations for the user sample
+    recommendations_df = CB.compute_recommendations_for_users(users, use_lda=use_lda, n_recommendations=n_recommendations, n_topics=n_topics, n_days=n_days, n_features=n_features, n_iterations=n_iterations)
 
-    # Limit the impressions to only those the users in the user sample have interacted with
-    history = history[history.index.isin(users)] # TOGGLE WITH USERS OR USER_SAMPLE
-
-    # Collect all article IDs read by these users
-    all_article_ids = set(history["article_id_fixed"].explode())
-    
-    # Set initial date and articles
-    # Filter articles only on recency (and remove articles with no views)
-    curr_date = datetime.date(2023, 6, 8)
-    articles = pd.read_parquet('./data/articles.parquet')
-    articles_filtered = pd.read_parquet('./data/articles.parquet',  
-                            filters=[("published_time", ">", curr_date - datetime.timedelta(days=15)), # 15 days seems best for some reason, have tried several other numbers
-                                        ("total_pageviews", ">", 1)])
-
-    # Articles the user have read are combined back into the articles filtered by recency.
-    # This is needed as recency filter might remove older articles read by user
-    # Might be worth exploring extending this filter to the user's read articles too in the future
-    read_articles = articles[articles['article_id'].isin(all_article_ids)]
-    combined = pd.concat([articles_filtered, read_articles]).drop_duplicates(subset='article_id').reset_index(drop=True)
-
-    
-
-    matrix = []
-    if use_lda:
-        matrix = CB.train_vectorizer(combined, 59, use_lda=True)
-    else:
-        # Create a sparse score vector for the articles in the corpus
-        matrix = CB.train_vectorizer(combined)
-    
-
-
-    # Map article ids to indexes
-    id_to_index = dict(zip(combined['article_id'], combined.index))
-
-    recommendations_dict = {}
-
-    # Loop through the users in the sample and generate recommendations
-    for user_id in users: # TOGGLE WITH USERS OR USER_SAMPLE
-        article_ids = history.loc[user_id]["article_id_fixed"]
-        article_ids = [id for id in article_ids if id in id_to_index]
-
-        if not article_ids:
-            continue
-
-        # Get recommendations for user and cast to list of ints
-        recommended_ids = [int(id) for id in CB.recommend_for_user(
-            article_ids, combined, matrix, use_lda, 10)]
-
-        recommendations_dict[user_id] = recommended_ids
-        print(f"Calculated recommendations for user: {user_id}")
-
-    # Make dataframe of recs for the precision method
-    recommendations_df = pd.DataFrame(
-        {
-            "user_id": list(recommendations_dict.keys()),
-            "recommended_article_ids": list(recommendations_dict.values()),
-        }
-    ).set_index("user_id")
-
+    # Calculate precision and ndcg based on the recs
     precision = calculate_precision(recommendations_df, validation_data)
     ndcg = calculate_ndcg(recommendations_df, validation_data)
-    print(f"Precision: {precision:.4f}") # Using 4 digits here as it can be quite low :-(
+    print(f"Precision: {precision:.4f}")
     print(f"nDCG: {ndcg:.4f}")
-
 
 def main():
     method = ""
@@ -202,7 +158,7 @@ def main():
             content()
             return
         elif method == "lda":
-            content(use_lda=True)
+            content(use_lda=True, n_topics=57)
             return
         elif method == "col":
             collaborative()
@@ -212,13 +168,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-# Fra kjøring på alle brukere (content_bow):
-# Med pageviews > 100 000, date = 1:    0 TPs, 0.00 Precision
-# Med pageviews > 100 000, date = 15:    10401 TPs, 0.09 Precision
-# Med pageviews > 1, date = 15:     143 TPs, 0.00 Precision
-    
-
-
-# TODO: globale variabler

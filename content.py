@@ -5,21 +5,23 @@ import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
 from sklearn.decomposition import LatentDirichletAllocation
 from stop_words import get_stop_words
-from sklearn.metrics.pairwise import linear_kernel, cosine_similarity
+from sklearn.metrics.pairwise import linear_kernel
 import scipy.sparse as sp 
 
 
-
-def train_vectorizer(articles: pd.DataFrame, topic_count: int, use_lda=False):
+def train_vectorizer(articles: pd.DataFrame, n_topics: int, use_lda=False, n_iterations=10, n_features=1000):
     """
    Creates a TF-IDF or LDA matrix representing the provided articles.
 
     Parameters:
         articles (pd.DataFrame): Standard articles DF.
-        use_lda (bool): Flag for toggling between methods
+        n_topics (int): Number of topics to use for LDA, if applicable.
+        use_lda (bool): Flag for toggling between methods.
+        n_iterations (int): Number of max LDA iterations, default=10.
+        n_features (int): Number of max features when vectorizing, default=1000.
 
     Returns:
-        sp.csr_matrix: A sparse score vector (here labeled matrix)
+        sp.csr_matrix: Matrix with vector representations of the articles.
     """
 
     # Creates a 'words' column that joins together the articles' body and title, etc.
@@ -27,7 +29,7 @@ def train_vectorizer(articles: pd.DataFrame, topic_count: int, use_lda=False):
     (articles['title'].fillna('') + ' ') * 1 +  
     (articles['subtitle'].fillna('') + ' ') * 1 + 
     articles['body'].fillna('') + ' ' +
-    (articles['category_str'].fillna('') + ' ') * 1 # categories are weighted tenfold here
+    (articles['category_str'].fillna('') + ' ') * 1
 )
     # Substitues some punctuation and sets everything to lower case
     articles['words'] = articles['words'].str.replace(r'[.,!?-]', '', regex=True).str.lower()
@@ -53,35 +55,35 @@ def train_vectorizer(articles: pd.DataFrame, topic_count: int, use_lda=False):
     "split", "element"
     ]
 
-
     # The imported stop words and the custom names are combined into one group of stop words
     custom_stop_words = list(stop_words.union(danish_names))
 
     if not use_lda:
         # Create TfidfVectorizer using these stopwrods
-        vectorizer = TfidfVectorizer(stop_words=custom_stop_words, max_features=1000)
+        vectorizer = TfidfVectorizer(stop_words=custom_stop_words, max_features=n_features)
         matrix = vectorizer.fit_transform(articles['words'])
         return matrix
     else:
         # Convert documents to word count vectors
-        vectorizer = CountVectorizer(stop_words=custom_stop_words, max_features=1000)
+        vectorizer = CountVectorizer(stop_words=custom_stop_words, max_features=n_features)
         matrix = vectorizer.fit_transform(articles['words'])
 
         # Train lda model
-        lda = LatentDirichletAllocation(n_components=topic_count, max_iter=10, random_state=1)
+        lda = LatentDirichletAllocation(n_components=n_topics, max_iter=n_iterations, random_state=1)
         matrix = lda.fit_transform(matrix)
         return matrix
 
 
-def recommend_for_user(article_ids: list, articles: pd.DataFrame, tfidf_matrix: sp.csr_matrix, use_lda: bool, k: int):
+def recommend_for_user(article_ids: list, articles: pd.DataFrame, matrix: sp.csr_matrix, use_lda: bool, k: int):
     """
-    Recommend top_k articles for a given user based on cosine similarity (linear kernel).
+    Recommend k best articles for a given user.
 
     Parameters:
         article_ids (list): List of article ids read by the user.
         articles (pd.DataFrame): Standard articles DF.
-        tfidf_matrix (sp.csr_matrix): TF-IDF vectorized representation of the articles.
-        k (int): # of articles to recommend.
+        matrix (sp.csr_matrix): TF-IDF or LDA vectorized representation of the articles.
+        use_lda (bool): Flag for selecting either LDA or TF-IDF approach.
+        k (int): Number of articles to recommend.
 
     Returns:
         List[int]: List of recommended article ids.
@@ -97,19 +99,17 @@ def recommend_for_user(article_ids: list, articles: pd.DataFrame, tfidf_matrix: 
     if len(indexes) == 0:
         raise ValueError("No articles found for user.")
     
-
-    # Create user vector by averaging the tfidf scores for all the articles they have read
+    # Create user feature vector by averaging the scores for all the articles they have read
     user_vector = []
     if not use_lda:
-        user_vector = tfidf_matrix[indexes].mean(axis=0)
+        user_vector = matrix[indexes].mean(axis=0)
         user_vector = sp.csr_matrix(user_vector)  # Convert from np.matrix to sparse (for the cosine sim func)
     else:
-        user_vector = np.mean(tfidf_matrix[indexes], axis=0).reshape(1, -1)
-
+        user_vector = np.mean(matrix[indexes], axis=0).reshape(1, -1)
 
     # Calculate cosine similarity (here: linear kernel) between user vector and the "universal" matrix
     # Then, exclude already read articles
-    scores = linear_kernel(user_vector, tfidf_matrix).flatten()
+    scores = linear_kernel(user_vector, matrix).flatten()
     filtered_scores = [i for i in range(len(articles)) if i not in indexes]
     scores = scores[filtered_scores]
 
@@ -118,8 +118,7 @@ def recommend_for_user(article_ids: list, articles: pd.DataFrame, tfidf_matrix: 
     top_k = np.argpartition(scores, -k)[-k:]
     top_k = top_k[np.argsort(scores[top_k])[::-1]]
 
-
-    # Map the top_k indexes (filtered) back to their original indexes (cosine scores)
+    # Map the top_k indexes (filtered) back to their original indexes (similarity scores)
     # This is necessary because 'scores' is a filtered subset of the original similarity array
     top_k = [filtered_scores[i] for i in top_k]
 
@@ -127,145 +126,97 @@ def recommend_for_user(article_ids: list, articles: pd.DataFrame, tfidf_matrix: 
     return articles.iloc[top_k]['article_id'].tolist()
 
 
-def main():
-    pd.set_option('display.max_rows', None)
+def compute_recommendations_for_users(users: np.ndarray,
+    n_recommendations: int,
+    n_topics: int,
+    n_days=15,
+    use_lda=False,
+    n_features=1000,
+    n_iterations=10,
+    ):
+    """
+    Recommends n_recommendations articles for a given set of users based on the similarity of articles they have read.
 
+    Parameters:
+        n_recommendations (int): Number of recommendations to compute for each user.
+        n_topics (int): Number of topics to use for LDA, if applicable.
+        n_days (int): Number of days to include (backwards from set date) in recency filter, default=15.
+        use_lda (bool): Boolean to decide whether to use LDA or BoW, default=False.
+        n_features (int): Number of max features when vectorizing, default=1000.
+        n_iterations (int): Number of max LDA iterations, default=10.
 
-    # Example usage given a concrete uid
-    # See more complex usage in evaluate.py
-    user_id = 13538
-    history = pd.read_parquet('./data/train/history.parquet').set_index("user_id")
-    user_row = history.loc[user_id]
-    article_ids = user_row["article_id_fixed"]
+    Returns:
+        pd.dataframe: Dataframe of recommended articles.
+    """
+   
     curr_date = datetime.date(2023, 6, 8)
+    history = pd.read_parquet('./data/train/history.parquet').set_index("user_id")
     articles = pd.read_parquet('./data/articles.parquet')
     articles_filtered = pd.read_parquet('./data/articles.parquet',  
-                            filters=[("published_time", ">", curr_date - datetime.timedelta(days=15)),
+                            filters=[("published_time", ">", curr_date - datetime.timedelta(days=n_days)),
                                         ])
-    read_articles = articles[articles['article_id'].isin(article_ids)]
+    
+    # Limit the impressions to only those the users in the user sample have interacted with
+    history = history[history.index.isin(users)]
 
-    # Combines recent articles (filtered) with articles read by the user, as they otherwise would likely be filtered out
+    # Collect all article IDs read by these users
+    all_article_ids = set(history["article_id_fixed"].explode())
+
+    # Articles the users have read are combined back into the articles filtered by recency.
+    # This is needed as recency filter might remove older articles read by the users.
+    # Might be worth exploring extending this filter to the user's read articles too in the future
+    read_articles = articles[articles['article_id'].isin(all_article_ids)]
     combined = pd.concat([articles_filtered, read_articles]).drop_duplicates(subset='article_id').reset_index(drop=True)
 
-    # Train matrix once based on this combined set of articles
-    tfidf_matrix = train_vectorizer(combined)
+    # Make the vector representation of the articles
+    matrix = []
+    if use_lda:
+        matrix = train_vectorizer(combined, n_topics, use_lda=use_lda, n_features=n_features, n_iterations=n_iterations)
+    else:
+        # Create a sparse score vector for the articles in the corpus
+        matrix = train_vectorizer(combined, n_features=n_features)
 
-    recommended = recommend_for_user(article_ids, combined, tfidf_matrix, False, 10)
-    print(recommended)
-
-    for article_id in recommended:
-        art = articles[articles['article_id'] == article_id]
-
-
-        title = art.iloc[0]['title']
-        subtitle = art.iloc[0]['subtitle']
-        body = art.iloc[0]['body']
-        print(body)
-
-        #print(art)
+    # Map article ids to indexes
+    id_to_index = dict(zip(combined['article_id'], combined.index))
 
 
+    # Loop through the users in the sample and generate recommendations
+    recommendations_dict = {}
+    for user_id in users:
+        article_ids = history.loc[user_id]["article_id_fixed"]
+        article_ids = [id for id in article_ids if id in id_to_index]
+
+        if not article_ids:
+            continue
+
+        # Get recommendations for user and cast to list of ints
+        recommended_ids = [int(id) for id in recommend_for_user(
+            article_ids, combined, matrix, use_lda, n_recommendations)]
+
+        recommendations_dict[user_id] = recommended_ids
+        print(f"Calculated recommendations for user: {user_id}")
+
+    # Make dataframe of recs to standarize for calculating precision, etc.
+    recommendations_df = pd.DataFrame(
+        {
+            "user_id": list(recommendations_dict.keys()),
+            "recommended_article_ids": list(recommendations_dict.values()),
+        }
+    ).set_index("user_id")
+    return recommendations_df
+   
+
+def main():
+    """
+        Example usage of the content recommendation method.
+    """
+
+    user = 13538
+    user_ar = []
+    user_ar.append(user)
+
+    recommendations_df = compute_recommendations_for_users(user_ar, 10, 40, 15, True)
+    print(recommendations_df)
 
 if __name__ == "__main__":
     main()
-
-
-
-# På alle brukere, korrigert:
-# Equal weights, topics_# = 100, max_features = 1000 
-# Precision: 0.0005
-# nDCG: 0.0021
-    
-# Equal weights, topics_# = 80, max_features = 1000 
-# Precision: 0.0034
-# nDCG: 0.0171
-
-# Equal weights, topics_# = 72, max_features = 1000 
-# Precision: 0.0035     # 0.0008
-# nDCG: 0.0130          0.0028
-
-# Equal weights, topics_# = 70, max_features = 1000
-# Precision: 0.0052
-# nDCG: 0.0486
-
-# Equal weights, topics_# = 60, max_features = 1000
-# Precision: 0.0049     # 0.0011 (cosine sim)
-# nDCG: 0.0231          # 0.0047 (cosine sim)
-
-# Equal weights, topics_# = 50, max_features = 1000
-# Precision: 0.0034
-# nDCG: 0.0101
-    
-# Equal weights, topics_# = 40, max_features = 1000 
-# Precision: 0.0013
-# nDCG: 0.0052
-
-# Equal weights, topics_# = 20, max_features = 1000 
-# Precision: 0.0008
-# nDCG: 0.0025
-
-
-    
-# seed=69
-# Topics_# = 72:
-# Precision: 0.0014
-# nDCG: 0.0066
-
-# Topics_# = 50:
-# Precision: 0.0022     0.0006 (max iter 20)
-# nDCG: 0.0097          0.0026 (max iter 20)
-    
-# Topics_# = 20, max iter 20:
-# Precision: 0.0004
-# nDCG: 0.0014  
-    
-
-
-# seed = 1
-# Topics_# = 20, max_iter = 10:
-# Precision: 0.0009
-# nDCG: 0.0035
-    
-# Topics_# = 50, max_iter = 10:
-# Precision: 0.0025
-# nDCG: 0.0096
-
-# Topics_# = 55, max_iter = 10: 
-# Precision: 0.0024
-# nDCG: 0.0082
-
-# Topics_# = 56, max_iter = 10: 
-# Precision: 0.0032
-# nDCG: 0.0111
-
-# Topics_# = 57, max_iter = 10: 
-# Precision: 0.0034
-# nDCG: 0.0184
-    
-# Topics_# = 58, max_iter = 10: 
-# Precision: 0.0039
-# nDCG: 0.0152
-
-# Topics_# = 60, max_iter = 10:
-# Precision: 0.0034
-# nDCG: 0.0125
-
-# Topics_# = 65, max_iter = 10:
-# Precision: 0.0012
-# nDCG: 0.0038
-
-# Topics_# = 70, max_iter = 10:
-# Precision: 0.0004
-# nDCG: 0.0014
-
-    
-
-# TODO:
-    # prøve recency filter på artikler brukeren allerede har lest også - > vil trolig påvirke gjennomsnittet
-
-    # Oppdatere documentasjon
-
-    # Ta en titt på disse brukerne:
-    # Calculated nDCG for user: 2424496 at 1.0000
-    # Calculated nDCG for user: 1998523 at 0.2891
-    # Calculated nDCG for user: 2227899 at 0.0000
