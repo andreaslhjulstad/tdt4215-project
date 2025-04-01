@@ -1,9 +1,12 @@
-# Dataset
+¨# Dataset
 data/
 
 # IDE folders
 .vscode
 .idea
+
+# Codecarbon output
+emissions.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
