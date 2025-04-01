@@ -2,11 +2,7 @@ import numpy as np
 import pandas as pd
 import datetime
 
-from utils import create_user_article_matrix
-
-
-def sigmoid(x):
-    return 1 / (1 + np.exp(-x))
+from utils import create_user_article_matrix, sigmoid
 
 
 def train_matrix_factorization(
@@ -35,13 +31,16 @@ def train_matrix_factorization(
     articles = user_article_matrix.columns
 
     user_factor_map = {}
+    # Initialize user factors with small random values from a normal distribution
     for user in users:
         user_factors = np.random.normal(scale=1.0 / n_factors, size=(n_factors,))
         user_factor_map[user] = user_factors
+    # Initialize item factors
     item_factor_map = {}
     for item in articles:
         item_factors = np.random.normal(scale=1.0 / n_factors, size=(n_factors,))
         item_factor_map[item] = item_factors
+    # Perform SGD
     for iteration in range(n_iterations):
         for u in users:
             for i in articles:
@@ -49,10 +48,13 @@ def train_matrix_factorization(
                 if not pd.isna(user_interaction):
                     user_factor = user_factor_map[u]
                     item_factor = item_factor_map[i]
+                    # Compute prediction and error
+                    # Use sigmoid function to scale between 0 and 1
                     pred = sigmoid(
                         np.dot(user_factor, item_factor)
                     )  # Use sigmoid function to scale between 0 and 1
                     error = user_interaction - pred
+                    # Update user and item factors, applies regularization to avoid overfitting
                     user_factor_map[u] += learning_rate * (
                         error * item_factor - regularization * user_factor
                     )
@@ -78,6 +80,7 @@ def predict(user_factors, item_factors):
     predictions = pd.DataFrame(index=user_factors.keys(), columns=item_factors.keys())
     for user, user_factor in user_factors.items():
         for item, item_factor in item_factors.items():
+            # Compute prediction using sigmoid function
             predictions.loc[user, item] = sigmoid(np.dot(user_factor, item_factor))
     return predictions
 
