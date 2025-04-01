@@ -6,14 +6,24 @@ import collaborative as CF
 from codecarbon import EmissionsTracker
 
 
-def calculate_precision(recommendations: DataFrame, actual: DataFrame):
+def calculate_precision(recommendations: DataFrame, history: DataFrame):
+    """
+    Calculate the precision of the recommendations.
+
+    Parameters:
+        recommendations (pd.DataFrame): DataFrame containing the recommended articles for each user.
+        history (pd.DataFrame): DataFrame containing the actual clicked articles for each user.
+
+    Returns:
+        float: Precision score.
+    """
     true_positives = 0
     total_recommendations = 0
 
     for user_id in recommendations.index:
         user_recommendations = recommendations.loc[user_id]["recommended_article_ids"]
         # Get the user's clicked articles from validation data
-        ground_truth = actual.loc[user_id]["article_id_fixed"]
+        ground_truth = history.loc[user_id]["article_id_fixed"]
 
         user_true_positives = sum(
             1 for rec in user_recommendations if rec in ground_truth
@@ -38,7 +48,16 @@ def dcg(relevances):
     return dcg_val
 
 
-def calculate_ndcg(recommendations: DataFrame, actual: DataFrame):
+def calculate_ndcg(recommendations: DataFrame, history: DataFrame):
+    """
+    Calculate the average nDCG for the recommendations.
+
+    Parameters:
+        recommendations (pd.DataFrame): DataFrame containing the recommended articles for each user.
+        history (pd.DataFrame): DataFrame containing the actual clicked articles for each user.
+    Returns:
+        float: Average nDCG score.
+    """
     ndcg_scores = []  # Initialize a list to store nDCG for all users
     for user in recommendations.index:
         user_recommendations = recommendations.loc[user]["recommended_article_ids"]
@@ -46,7 +65,7 @@ def calculate_ndcg(recommendations: DataFrame, actual: DataFrame):
         if len(user_recommendations) < 2:
             continue  # Skip users less than 2 recommendations, as it doesn't make sense to calculate nDCG with only 1 or 0 items
 
-        clicked_articles = actual.loc[user]["article_id_fixed"]
+        clicked_articles = history.loc[user]["article_id_fixed"]
 
         prediction_vector = [
             1 if article in clicked_articles else 0 for article in user_recommendations
