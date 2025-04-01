@@ -54,33 +54,80 @@ def create_neighborhood(
     return neighborhood
 
 
-def calculate_scores(similar_users_clicked: DataFrame, neighborhood: Series):
-    # Calculating weighted scores based on articles similar users have clicked
-    item_score = {}
+def calculate_scores(
+    similar_users_clicked: pd.DataFrame,
+    neighborhood: pd.Series,
+    weighted: bool = False,
+    base_rating: float = 0.5,
+):
+    """
+    Calculate scores for items based on similar users' interactions.
 
-    for i in similar_users_clicked.columns:
-        article = similar_users_clicked[i]
-        total = 0
-        count = 0
-        for u in similar_users_clicked.index:
-            user_interaction = article[u]  # 1 if user clicked, NaN otherwise
-            user_similarity = neighborhood[u]
-            article_clicked = pd.isna(user_interaction) == False
-            if article_clicked:
-                score = (
-                    user_similarity * user_interaction
-                )  # Score is weighted based on how similar the user is
-                total += score
-                count += 1
-        item_score[article.name] = total / count
+    Parameters:
+        similar_users_clicked (pd.DataFrame): DataFrame of similar users' interactions.
+        neighborhood (pd.Series): Series of user similarities.
+        weighted (bool): If True, uses weighted deviation algorithm; if False, uses simple averaging.
+        base_rating (float): Base rating for items (only used when weighted=True).
 
-    # Convert dictionary to a dataframe
-    item_score = pd.DataFrame(
-        item_score.values(), columns=["score"], index=item_score.keys()
+    Returns:
+        pd.DataFrame: DataFrame of item scores sorted by score in descending order.
+    """
+    item_scores = {}
+
+    for item in similar_users_clicked.columns:
+        # Get the column for this specific item
+        item_interactions = similar_users_clicked[item]
+
+        if weighted:
+            # Use weighted deviation method
+            numerator = 0
+            denominator = 0
+
+            for user in similar_users_clicked.index:
+                # Check if user interacted with the item
+                if pd.notna(item_interactions[user]):
+                    # User similarity weight
+                    user_weight = neighborhood[user]
+                    # Deviation from base rating
+                    deviation = item_interactions[user] - base_rating
+                    # Weighted deviation
+                    numerator += user_weight * deviation
+                    # Sum of absolute weights
+                    denominator += abs(user_weight)
+
+            # Prevent division by zero
+            if denominator == 0:
+                item_scores[item] = base_rating
+            else:
+                # Final score is base rating + weighted deviation
+                item_scores[item] = base_rating + (numerator / denominator)
+        else:
+            # Use simple averaging method
+            total = 0
+            count = 0
+
+            for user in similar_users_clicked.index:
+                user_interaction = item_interactions[user]
+                user_similarity = neighborhood[user]
+
+                # Check if user interacted with the item (not NaN)
+                if pd.notna(user_interaction):
+                    total += user_similarity
+                    count += 1
+
+            # Prevent division by zero
+            if count == 0:
+                item_scores[item] = 0
+            else:
+                item_scores[item] = total / count
+
+    # Convert to DataFrame and sort
+    item_score_df = pd.DataFrame.from_dict(
+        item_scores, orient="index", columns=["score"]
     )
-    item_score.sort_values(by="score", inplace=True, ascending=False)
+    item_score_df.sort_values(by="score", ascending=False, inplace=True)
 
-    return item_score
+    return item_score_df
 
 
 def get_recommendations_for_user(
