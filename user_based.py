@@ -174,14 +174,14 @@ def compute_recommendations_for_users(
     neighborhood_size: int,
 ):
     """
-    Compute recommendations for a list of users.
+    Compute recommendations for a list of users using kNN.
 
     Parameters:
         users (ndarray): Array of user IDs for whom to compute recommendations.
         impressions (pd.DataFrame): DataFrame of user interactions with articles.
         n_recommendations (int): Number of recommendations to return for each user.
         similarity_threshold (float): Threshold for user similarity.
-        neighborhood_size (int): Number of similar users to include in the neighborhood.
+        neighborhood_size (int): Number of similar users to include in the neighborhood, also known as k.
 
     Returns:
         pd.DataFrame: DataFrame of recommended articles for each user.
