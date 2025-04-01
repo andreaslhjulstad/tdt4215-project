@@ -112,7 +112,7 @@ def main():
     precision = calculate_precision(recommendations, validation_data)
     ndcg = calculate_ndcg(recommendations, validation_data)
 
-    print(f"Emissions: {emissions:.4f} kg CO2")
+    print(f"Emissions: {emissions} kg CO2")
     print(f"Precision: {precision:.2f}")
     print(f"nDCG: {ndcg:.4f}")
 
