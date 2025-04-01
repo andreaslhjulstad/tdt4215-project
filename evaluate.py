@@ -1,7 +1,9 @@
+import datetime
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
-import collaborative as CF
+import user_based as kNN
+import matrixfactorization as MF
 
 from codecarbon import EmissionsTracker
 
@@ -79,16 +81,32 @@ def main():
     # Limit the impressions to only those the users in the user sample have interacted with
     # train_data = behaviors[behaviors["user_id"].isin(user_sample)]
 
+    current_date = datetime.datetime(2023, 6, 8)  # Chosen date for scenario
+    time_window = datetime.timedelta(days=30)
+
     tracker = EmissionsTracker()
     tracker.start()
 
-    recommendations = CF.compute_recommendations_for_users(
+    # recommendations = kNN.compute_recommendations_for_users(
+    #     user_sample,
+    #     behaviors,
+    #     n_recommendations=10,
+    #     similarity_threshold=0.2,
+    #     neighborhood_size=10,
+    # )
+
+    recommendations = MF.compute_recommendations_for_users(
         user_sample,
         behaviors,
         n_recommendations=10,
-        similarity_threshold=0.2,
-        neighborhood_size=10,
+        n_factors=3,
+        n_iterations=10,
+        learning_rate=0.01,
+        regularization=0.1,
+        time_window=time_window,
+        current_date=current_date,
     )
+
     emissions = float(tracker.stop())
     precision = calculate_precision(recommendations, validation_data)
     ndcg = calculate_ndcg(recommendations, validation_data)
