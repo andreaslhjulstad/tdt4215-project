@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
-from sklearn.metrics import ndcg_score
 import collaborative as CF
+
+from codecarbon import EmissionsTracker
 
 
 def calculate_precision(recommendations: DataFrame, actual: DataFrame):
@@ -78,6 +79,9 @@ def main():
     # Limit the impressions to only those the users in the user sample have interacted with
     # train_data = behaviors[behaviors["user_id"].isin(user_sample)]
 
+    tracker = EmissionsTracker()
+    tracker.start()
+
     recommendations = CF.compute_recommendations_for_users(
         user_sample,
         behaviors,
@@ -85,11 +89,11 @@ def main():
         similarity_threshold=0.2,
         neighborhood_size=10,
     )
-
+    emissions = float(tracker.stop())
     precision = calculate_precision(recommendations, validation_data)
-
     ndcg = calculate_ndcg(recommendations, validation_data)
 
+    print(f"Emissions: {emissions:.4f} kg CO2")
     print(f"Precision: {precision:.2f}")
     print(f"nDCG: {ndcg:.4f}")
 
