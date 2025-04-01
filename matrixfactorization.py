@@ -49,12 +49,11 @@ def train_matrix_factorization(
                     user_factor = user_factor_map[u]
                     item_factor = item_factor_map[i]
                     # Compute prediction and error
-                    # Use sigmoid function to scale between 0 and 1
                     pred = sigmoid(
                         np.dot(user_factor, item_factor)
                     )  # Use sigmoid function to scale between 0 and 1
                     error = user_interaction - pred
-                    # Update user and item factors, applies regularization to avoid overfitting
+                    # Update user and item factors, applying regularization to avoid overfitting
                     user_factor_map[u] += learning_rate * (
                         error * item_factor - regularization * user_factor
                     )
