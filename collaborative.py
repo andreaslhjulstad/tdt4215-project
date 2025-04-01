@@ -1,29 +1,10 @@
 import numpy as np
 from numpy import ndarray
 import pandas as pd
-from pandas import DataFrame, Series
+from pandas import DataFrame
 from sklearn.metrics.pairwise import cosine_similarity
 
-
-def create_user_article_matrix(df: DataFrame):
-    # The article_ids_clicked column has an array of article_ids as value
-    # Explode the array so each article_id in the list gets it's own row
-    exploded = df.explode("article_ids_clicked")
-    exploded["clicked"] = 1
-
-    # Creates a user-article matrix where the index is the user id and the columns are article IDs
-    # The value for each user-article pair is 1 if the user clicked on the article, and 0 otherwise
-    user_article_matrix = pd.pivot_table(
-        exploded,
-        values="clicked",
-        index="user_id",
-        columns="article_ids_clicked",
-    )
-
-    sparse_user_article_matrix = user_article_matrix.astype(
-        pd.SparseDtype(float, np.nan)
-    )
-    return sparse_user_article_matrix
+from utils import create_user_article_matrix
 
 
 def calculate_user_similarity(user_article_matrix: DataFrame):
