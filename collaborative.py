@@ -27,6 +27,15 @@ def create_user_article_matrix(df: DataFrame):
 
 
 def calculate_user_similarity(user_article_matrix: DataFrame):
+    """
+    Calculate user similarity using cosine similarity.
+
+    Parameters:
+        user_article_matrix (pd.DataFrame): User-article matrix where rows are users and columns are articles.
+
+    Returns:
+        pd.DataFrame: DataFrame of user similarity scores.
+    """
     # Calculate user similarity for pairs (i, j) using cosine similarity
     user_similarity_values = cosine_similarity(user_article_matrix.fillna(0))
     # Fill diagonal with 0 to ensure that pairs (i, i) are not counted
@@ -47,6 +56,17 @@ def create_neighborhood(
     neighborhood_size: int,
     picked_userid: int,
 ):
+    """
+    Create a neighborhood of similar users for a given user.
+
+    Parameters:
+        user_similarity (pd.DataFrame): DataFrame of user similarity scores.
+        neighborhood_threshold (float): Threshold for user similarity.
+        neighborhood_size (int): Number of similar users to include in the neighborhood.
+        picked_userid (int): User ID for whom to create the neighborhood.
+    Returns:
+        pd.Series: Series of user IDs in the neighborhood sorted by similarity.
+    """
     neighborhood = user_similarity[
         user_similarity.loc[picked_userid] > neighborhood_threshold
     ][picked_userid].sort_values(ascending=False)[:neighborhood_size]
@@ -136,7 +156,21 @@ def get_recommendations_for_user(
     user_article_matrix: DataFrame,
     neighborhood: DataFrame,
 ):
+    """
+    Get recommendations for a specific user based on their neighborhood.
+
+    Parameters:
+        userid (int): User ID for whom to get recommendations.
+        n_recommendations (int): Number of recommendations to return.
+        user_article_matrix (pd.DataFrame): User-article matrix.
+        neighborhood (pd.Series): Series of user similarities.
+
+    Returns:
+        pd.DataFrame: DataFrame of recommended articles sorted by score in descending order.
+    """
+
     # Limit dataset to articles that similar users have clicked, and only the ones the selected user has not clicked
+
     userid_clicked = user_article_matrix[user_article_matrix.index == userid].dropna(
         axis=1, how="all"
     )
@@ -145,6 +179,7 @@ def get_recommendations_for_user(
     ].dropna(axis=1, how="all")
     similar_user_clicked.drop(userid_clicked.columns, inplace=True, errors="ignore")
 
+    # Calculate the scores
     scores = calculate_scores(similar_user_clicked, neighborhood)
 
     return scores.head(n_recommendations)
@@ -157,6 +192,19 @@ def compute_recommendations_for_users(
     similarity_threshold: float,
     neighborhood_size: int,
 ):
+    """
+    Compute recommendations for a list of users.
+
+    Parameters:
+        users (ndarray): Array of user IDs for whom to compute recommendations.
+        impressions (pd.DataFrame): DataFrame of user interactions with articles.
+        n_recommendations (int): Number of recommendations to return for each user.
+        similarity_threshold (float): Threshold for user similarity.
+        neighborhood_size (int): Number of similar users to include in the neighborhood.
+
+    Returns:
+        pd.DataFrame: DataFrame of recommended articles for each user.
+    """
     user_article_matrix = create_user_article_matrix(impressions)
     user_similarity = calculate_user_similarity(user_article_matrix)
     recommendations_dict = {}
