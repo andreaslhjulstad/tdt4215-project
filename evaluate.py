@@ -118,10 +118,10 @@ def main():
         user_sample,
         behaviors,
         n_recommendations=10,
-        n_factors=3,
+        n_factors=20,
         n_iterations=10,
-        learning_rate=0.01,
-        regularization=0.1,
+        learning_rate=0.1,
+        regularization=0.2,
         time_window=time_window,
         current_date=current_date,
     )
