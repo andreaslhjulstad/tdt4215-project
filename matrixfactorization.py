@@ -42,6 +42,7 @@ def train_matrix_factorization(
         item_factor_map[item] = item_factors
     # Perform SGD
     for iteration in range(n_iterations):
+        iteration_errors = []
         for u in users:
             for i in articles:
                 user_interaction = user_article_matrix.loc[u, i]
@@ -49,9 +50,8 @@ def train_matrix_factorization(
                     user_factor = user_factor_map[u]
                     item_factor = item_factor_map[i]
                     # Compute prediction and error
-                    pred = sigmoid(
-                        np.dot(user_factor, item_factor)
-                    )  # Use sigmoid function to scale between 0 and 1
+                    pred = np.dot(user_factor, item_factor)
+                    # Use sigmoid function to scale between 0 and 1
                     error = user_interaction - pred
                     # Update user and item factors, applying regularization to avoid overfitting
                     user_factor_map[u] += learning_rate * (
@@ -60,7 +60,10 @@ def train_matrix_factorization(
                     item_factor_map[i] += learning_rate * (
                         error * user_factor - regularization * item_factor
                     )
-        print("Finished iteration", iteration + 1)
+                    iteration_errors.append(error**2)
+        # Compute mean squared error for the current iteration
+        mse = np.mean(iteration_errors)
+        print(f"Iteration {iteration + 1}/{n_iterations}, MSE: {mse:.4f}")
 
     return user_factor_map, item_factor_map
 
@@ -76,11 +79,16 @@ def predict(user_factors, item_factors):
     Returns:
         pd.DataFrame: DataFrame of predicted interactions.
     """
-    predictions = pd.DataFrame(index=user_factors.keys(), columns=item_factors.keys())
-    for user, user_factor in user_factors.items():
-        for item, item_factor in item_factors.items():
-            # Compute prediction using sigmoid function
-            predictions.loc[user, item] = sigmoid(np.dot(user_factor, item_factor))
+    # Create a DataFrame of the result of multiplying the user and item factors with the sigmoid function
+    user_ids = list(user_factors.keys())
+    article_ids = list(item_factors.keys())
+    user_factors_matrix = np.array([user_factors[user] for user in user_ids])
+    item_factors_matrix = np.array([item_factors[item] for item in article_ids])
+    predictions = pd.DataFrame(
+        sigmoid(np.dot(user_factors_matrix, item_factors_matrix.T)),
+        index=user_ids,
+        columns=article_ids,
+    )
     return predictions
 
 
@@ -142,11 +150,10 @@ def compute_recommendations_for_users(
 
     article_ids = predictions.columns.to_numpy()
     for u in predictions.index:
-        predicted_values = []
-        for i in article_ids:
-            predicted_values.append(predictions.loc[u, i])
-        sorted_article_ids = [x for x, _ in sorted(zip(article_ids, predicted_values))]
-        recommendations_dict[u] = sorted_article_ids[:n_recommendations]
+        # Get the top n_recommendations for each user
+        top_indices = np.argsort(predictions.loc[u].values)[::-1][:n_recommendations]
+        recommended_article_ids = article_ids[top_indices]
+        recommendations_dict[u] = recommended_article_ids
 
     recommendations_df = pd.DataFrame(
         {
