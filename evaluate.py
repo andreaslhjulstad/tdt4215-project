@@ -1,10 +1,9 @@
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
+import content as CB
 import collaborative as CF
-
 from codecarbon import EmissionsTracker
-
 
 def calculate_precision(recommendations: DataFrame, history: DataFrame):
     """
@@ -32,12 +31,21 @@ def calculate_precision(recommendations: DataFrame, history: DataFrame):
         true_positives += user_true_positives
         total_recommendations += len(user_recommendations)
 
+        # Added datatype conversion just in case earlier, probably not necessary anymore as recency was the problem
+        user_recommendations = [int(rec) for rec in user_recommendations]
+        ground_truth = set(int(article_id) for article_id in ground_truth)
+
+        user_true_positives = sum(1 for rec in user_recommendations if rec in ground_truth)
+
+        true_positives += user_true_positives
+        total_recommendations += len(user_recommendations)
+
     print(f"Total recommendations: {total_recommendations}")
     print(f"TPs: {true_positives}")
     precision = (
         true_positives / total_recommendations if total_recommendations > 0 else 0
     )
-    return precision
+    return precision 
 
 
 def dcg(relevances):
@@ -84,22 +92,25 @@ def calculate_ndcg(recommendations: DataFrame, history: DataFrame):
     return system_ndcg
 
 
-def main():
-    behaviors = pd.read_parquet("./data/train/behaviors.parquet").set_index("user_id")
+def collaborative():
+    behaviors = pd.read_parquet("./data/train/behaviors.parquet")
+    history = pd.read_parquet('./data/train/history.parquet').set_index(
+        "user_id"
+    )
+    articles = pd.read_parquet('./data/articles.parquet')
     validation_data = pd.read_parquet("./data/validation/history.parquet").set_index(
         "user_id"
     )
 
     # Only get the users that are in both the training set and validation set
-    users = np.array(list(set(behaviors.index) & set(validation_data.index)))
+    users = np.array(list(set(behaviors["user_id"]) & set(validation_data.index)))
 
     # Select users at random
-    user_sample = np.random.choice(users, size=1000)
+    user_sample = np.random.choice(users, size=1)
+    print(user_sample)
     # Limit the impressions to only those the users in the user sample have interacted with
-    # train_data = behaviors[behaviors["user_id"].isin(user_sample)]
-
-    tracker = EmissionsTracker()
-    tracker.start()
+    #train_data = behaviors[behaviors["user_id"].isin(user_sample)]
+    history = history[history.index.isin(user_sample)]
 
     recommendations = CF.compute_recommendations_for_users(
         user_sample,
@@ -108,14 +119,107 @@ def main():
         similarity_threshold=0.2,
         neighborhood_size=10,
     )
-    emissions = float(tracker.stop())
+
+    #recommendations = CB.compute_recommendations_for_users(user_sample, 10, history, articles)
+
     precision = calculate_precision(recommendations, validation_data)
     ndcg = calculate_ndcg(recommendations, validation_data)
-
-    print(f"Emissions: {emissions} kg CO2")
     print(f"Precision: {precision:.2f}")
     print(f"nDCG: {ndcg:.4f}")
 
+
+def content(n_topics=50, n_days=15, n_features=1000, n_recommendations=10, sample_users=False, n_iterations=10, n_samples=1000, use_lda=False):
+    """
+    Recommends articles using content-based filtering. Uses either LDA or TF-IDF, depending on specification. 
+
+    Parameters:
+        n_topics (int): Number of topics to use for LDA if applicable, default=50.
+        n_days (int): Number of days to include (backwards from set date) in recency filter, default=15.
+        n_features (int): Number of max features when vectorizing, default=1000.
+        n_recommendations (int): Number of recommendations to compute for each user.
+        sample_users (bool): Optional flag for enabling user sampling instead of using all users, default=False.
+        n_iterations (int): Number of max LDA iterations, default=10.
+        n_samples (int): Number of sampled users if applicable, default=1000.
+        use_lda (bool): Flag for toggling LDA or TF-IDF, default=False.
+
+    Returns:
+        sp.csr_matrix: Matrix with vector representations of the articles.
+    """
+
+    validation_data = pd.read_parquet("./data/validation/history.parquet").set_index("user_id")
+    history = pd.read_parquet('./data/train/history.parquet').set_index("user_id")
+
+    # Only get the users that are in both the training set and validation set
+    users = np.array(list(set(history.index) & set(validation_data.index)))
+
+    if sample_users:
+    # Select users at random
+        user_sample = np.random.choice(users, size=n_samples)
+        users = user_sample
+
+    # Compute recommendations for the user sample
+    recommendations_df = CB.compute_recommendations_for_users(users, use_lda=use_lda, n_recommendations=n_recommendations, n_topics=n_topics, n_days=n_days, n_features=n_features, n_iterations=n_iterations)
+
+    # Calculate precision and ndcg based on the recs
+    precision = calculate_precision(recommendations_df, validation_data)
+    ndcg = calculate_ndcg(recommendations_df, validation_data)
+    print(f"Precision: {precision:.4f}")
+    print(f"nDCG: {ndcg:.4f}")
+
+def main():
+
+    validation_data = pd.read_parquet("./data/validation/history.parquet").set_index("user_id")
+    history = pd.read_parquet('./data/train/history.parquet').set_index("user_id")
+    behaviors = pd.read_parquet("./data/train/behaviors.parquet")
+
+    # Only get the users that are in both the training set and validation set
+    users = np.array(list(set(history.index) & set(validation_data.index)))
+
+    reccomendation_df = None
+
+    # Determine sampling here!
+    sample_users = True
+
+    if sample_users:
+        # Select users at random
+            user_sample = np.random.choice(users, 100, replace=False)
+            users = user_sample
+
+    tracker = EmissionsTracker()
+    tracker.start()
+
+    method = ""
+    while method != "bow" or method != "lda" or method != "col" or method:
+        method = input("Please select a method (bow, lda, col): ")
+        if method == "bow":
+            # Compute recommendations for the user sample
+            recommendations_df = CB.compute_recommendations_for_users(users, n_recommendations=10)
+            break
+        elif method == "lda":
+            # Compute recommendations for the user sample
+            recommendations_df = CB.compute_recommendations_for_users(users, use_lda=True, n_topics=57, n_recommendations=10)
+            break
+        elif method == "col":
+            recommendations_df = CF.compute_recommendations_for_users(
+            users,
+            behaviors,
+            n_recommendations=10,
+            similarity_threshold=0.2,
+            neighborhood_size=10,
+            )
+            break
+        else:
+            print("Error selecting reccomendation method. See main in evaluate.py")
+    emissions = float(tracker.stop())
+    
+
+    if recommendations_df is not None:
+        # Calculate precision and ndcg based on the recs
+        precision = calculate_precision(recommendations_df, validation_data)
+        ndcg = calculate_ndcg(recommendations_df, validation_data)
+        print(f"Emissions: {emissions} kg CO2")
+        print(f"Precision: {precision:.4f}")
+        print(f"nDCG: {ndcg:.4f}")
 
 if __name__ == "__main__":
     main()
