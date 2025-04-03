@@ -6,6 +6,7 @@ from pandas import DataFrame
 import user_based as kNN
 import matrixfactorization as MF
 import content as CB
+import baseline as BL
 from codecarbon import EmissionsTracker
 
 
@@ -113,9 +114,10 @@ def main():
     users = np.array(list(set(behaviors.index) & set(validation_data.index)))
 
     recommendations_df = None
+    current_date = datetime.datetime(2023, 6, 8)  # Chosen date for scenario
 
     # Determine sampling here!
-    sample_users = True
+    sample_users = False
 
     if sample_users:
         # Select users at random
@@ -126,18 +128,22 @@ def main():
     tracker.start()
 
     method = ""
-    while method != "bow" or method != "lda" or method != "knn" or method != "mat":
-        method = input("Please select a method (bow, lda, knn or mat): ")
+    while method != "bow" or method != "lda" or method != "knn" or method != "mat" or method != "bas":
+        method = input("Please select a method (bow, lda, knn, mat or bas): ")
         if method == "bow":
             # Compute recommendations for the user sample
             recommendations_df = CB.compute_recommendations_for_users(
-                users, n_recommendations=10
+                users, 
+                n_recommendations=10,
             )
             break
         elif method == "lda":
             # Compute recommendations for the user sample
             recommendations_df = CB.compute_recommendations_for_users(
-                users, use_lda=True, n_topics=57, n_recommendations=10
+                users, 
+                use_lda=True, 
+                n_topics=57, 
+                n_recommendations=10,
             )
             break
         elif method == "knn":
@@ -150,7 +156,6 @@ def main():
             )
             break
         elif method == "mat":
-            current_date = datetime.datetime(2023, 6, 8)  # Chosen date for scenario
             time_window = datetime.timedelta(days=30)
             recommendations_df = MF.compute_recommendations_for_users(
                 user_sample,
@@ -164,8 +169,15 @@ def main():
                 current_date=current_date,
             )
             break
+        elif method == "bas":
+            recommendations_df = BL.compute_recommendations_for_users(
+                users,
+                current_date,
+                n_days=30,
+            )
+            break
         else:
-            print("Error selecting reccomendation method. See main in evaluate.py")
+            print("Error selecting recommendation method. See main in evaluate.py")
     emissions = float(tracker.stop())
 
     if recommendations_df is not None:
