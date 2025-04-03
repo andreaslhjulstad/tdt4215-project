@@ -135,6 +135,7 @@ def main():
             recommendations_df = CB.compute_recommendations_for_users(
                 users, 
                 n_recommendations=10,
+                curr_date=current_date,
             )
             break
         elif method == "lda":
@@ -144,6 +145,7 @@ def main():
                 use_lda=True, 
                 n_topics=57, 
                 n_recommendations=10,
+                curr_date=current_date,
             )
             break
         elif method == "knn":

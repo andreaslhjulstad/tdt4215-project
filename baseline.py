@@ -31,6 +31,7 @@ def compute_recommendations_for_users(users: np.ndarray, curr_date: datetime, n_
 
     Parameters:
         users (np.npdarray): List of users to recommend for, only used to standardize returned dataframe.
+        curr_date (datetime): Starting date for recommendations.
         n_recommendations (int): Number of recommendations to compute for each user, default=10.
         n_days (int): Number of days to include (backwards from set date) in recency filter, default=3.
 
