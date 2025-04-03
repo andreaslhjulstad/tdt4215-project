@@ -167,26 +167,59 @@ def content(n_topics=50, n_days=15, n_features=1000, n_recommendations=10, sampl
     print(f"nDCG: {ndcg:.4f}")
 
 def main():
+
+    validation_data = pd.read_parquet("./data/validation/history.parquet").set_index("user_id")
+    history = pd.read_parquet('./data/train/history.parquet').set_index("user_id")
+    behaviors = pd.read_parquet("./data/train/behaviors.parquet")
+
+    # Only get the users that are in both the training set and validation set
+    users = np.array(list(set(history.index) & set(validation_data.index)))
+
+    reccomendation_df = None
+
+    # Determine sampling here!
+    sample_users = True
+
+    if sample_users:
+        # Select users at random
+            user_sample = np.random.choice(users, 100, replace=False)
+            users = user_sample
+
     tracker = EmissionsTracker()
     tracker.start()
 
     method = ""
-    while method != "bow" or method != "lda" or method != "col":
+    while method != "bow" or method != "lda" or method != "col" or method:
         method = input("Please select a method (bow, lda, col): ")
         if method == "bow":
-            content()
+            # Compute recommendations for the user sample
+            recommendations_df = CB.compute_recommendations_for_users(users, n_recommendations=10)
             break
         elif method == "lda":
-            content(use_lda=True, n_topics=57)
+            # Compute recommendations for the user sample
+            recommendations_df = CB.compute_recommendations_for_users(users, use_lda=True, n_topics=57, n_recommendations=10)
             break
         elif method == "col":
-            collaborative()
+            recommendations_df = CF.compute_recommendations_for_users(
+            users,
+            behaviors,
+            n_recommendations=10,
+            similarity_threshold=0.2,
+            neighborhood_size=10,
+            )
             break
         else:
             print("Error selecting reccomendation method. See main in evaluate.py")
-    
     emissions = float(tracker.stop())
-    print(f"Emissions: {emissions} kg CO2")
+    
+
+    if recommendations_df is not None:
+        # Calculate precision and ndcg based on the recs
+        precision = calculate_precision(recommendations_df, validation_data)
+        ndcg = calculate_ndcg(recommendations_df, validation_data)
+        print(f"Emissions: {emissions} kg CO2")
+        print(f"Precision: {precision:.4f}")
+        print(f"nDCG: {ndcg:.4f}")
 
 if __name__ == "__main__":
     main()
