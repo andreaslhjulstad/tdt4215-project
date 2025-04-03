@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pandas as pd
 import datetime
@@ -63,7 +64,7 @@ def train_matrix_factorization(
                     iteration_errors.append(error**2)
         # Compute mean squared error for the current iteration
         mse = np.mean(iteration_errors)
-        print(f"Iteration {iteration + 1}/{n_iterations}, MSE: {mse:.4f}")
+        if "DEBUG" in os.environ: print(f"Iteration {iteration + 1}/{n_iterations}, MSE: {mse:.4f}")
 
     return user_factor_map, item_factor_map
 

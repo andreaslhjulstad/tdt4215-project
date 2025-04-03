@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from numpy import ndarray
 import pandas as pd
@@ -197,7 +198,7 @@ def compute_recommendations_for_users(
             user, n_recommendations, user_article_matrix, neighborhood
         )
         recommendations_dict[user] = recommendations.index.tolist()
-        print(f"Calculated recommendations for user: {user}")
+        if "DEBUG" in os.environ: print(f"Calculated recommendations for user: {user}")
     recommendations_df = pd.DataFrame(
         {
             "user_id": list(recommendations_dict.keys()),

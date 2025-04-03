@@ -1,3 +1,4 @@
+import os
 import datetime
 import pandas as pd
 import numpy as np
@@ -286,7 +287,7 @@ def compute_recommendations_for_users(
         ]
 
         recommendations_dict[user_id] = recommended_ids
-        print(f"Calculated recommendations for user: {user_id}")
+        if "DEBUG" in os.environ: print(f"Calculated recommendations for user: {user_id}")
 
     # Make dataframe of recs to standarize for calculating precision, etc.
     recommendations_df = pd.DataFrame(
