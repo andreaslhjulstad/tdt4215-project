@@ -1,4 +1,4 @@
-# Dataset
+¨# Dataset
 data/
 
 # Analysis
@@ -7,6 +7,9 @@ analysis_output/
 # IDE folders
 .vscode
 .idea
+
+# Codecarbon output
+emissions.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
