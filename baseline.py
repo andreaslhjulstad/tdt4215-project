@@ -1,9 +1,7 @@
-import datetime
-import pandas as pd
-
 import os
 import pandas as pd
 import numpy as np
+import datetime
 
 
 def baseline(data_path: str, curr_date: datetime):
