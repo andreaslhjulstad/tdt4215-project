@@ -4,6 +4,9 @@ data/
 # Analysis
 analysis_output/
 
+# Logs
+powermetrics_log.txt
+
 # IDE folders
 .vscode
 .idea

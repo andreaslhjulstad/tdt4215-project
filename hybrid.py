@@ -1,12 +1,13 @@
+import os
 import datetime
 import pandas as pd
 import numpy as np
-from baseline import baseline
-from collaborative import compute_recommendations_for_users
+from content import compute_recommendations_for_users as content_recommendations
+from user_based import compute_recommendations_for_users as user_based_recommendations
 
-# Constants
-COLLABORATIVE_WEIGHT = 0.5
-BASELINE_WEIGHT = 1 - COLLABORATIVE_WEIGHT
+# Constants - weights should sum to 1
+CONTENT_WEIGHT = 0.5
+USER_BASED_WEIGHT = 0.5
 N_RECOMMENDATIONS = 10
 N_CANDIDATES = 50
 
@@ -17,97 +18,133 @@ def get_article_titles(article_ids, articles_df):
             for aid in article_ids]
 
 
-def combine_and_score_articles(user_collab_articles, baseline_articles):
-    """Combine articles from both methods and calculate their scores"""
-    # Get all unique articles
-    all_article_ids = list(
-        set(user_collab_articles + baseline_articles.index.tolist()))
+def combine_and_score_articles(content_articles, user_based_articles):
+    """Combine articles from content-based and user-based methods and calculate scores"""
+    try:
+        # Convert to lists if they're numpy arrays
+        content_list = content_articles.tolist() if isinstance(
+            content_articles, np.ndarray) else content_articles
+        user_based_list = user_based_articles.tolist() if isinstance(
+            user_based_articles, np.ndarray) else user_based_articles
 
-    # Create scores dataframe
-    scores_df = pd.DataFrame(index=all_article_ids, columns=[
-                             'collaborative_score', 'baseline_score'])
-    scores_df.fillna(0.0, inplace=True)
+        # Get all unique articles
+        all_article_ids = list(set(content_list + user_based_list))
 
-    # Add collaborative scores (normalize them to 0-1 range)
-    collab_scores = np.linspace(1, 0, len(user_collab_articles))
-    scores_df.loc[user_collab_articles, 'collaborative_score'] = collab_scores
+        # Create scores dataframe with explicit dtype
+        scores_df = pd.DataFrame(index=all_article_ids, columns=[
+            'content_score', 'user_based_score'
+        ], dtype=float)
 
-    # Add baseline scores
-    scores_df.loc[baseline_articles.index,
-                  'baseline_score'] = baseline_articles['score']
+        # Fill NA values without downcasting
+        scores_df = scores_df.fillna(0.0)
 
-    # Calculate final scores
-    scores_df['final_score'] = (COLLABORATIVE_WEIGHT * scores_df['collaborative_score'] +
-                                BASELINE_WEIGHT * scores_df['baseline_score'])
+        # Add normalized scores (1 to 0) for each method
+        if len(content_list) > 0:
+            content_scores = np.linspace(1, 0, len(content_list))
+            scores_df.loc[content_list, 'content_score'] = content_scores
 
-    return scores_df
+        if len(user_based_list) > 0:
+            user_based_scores = np.linspace(1, 0, len(user_based_list))
+            scores_df.loc[user_based_list,
+                          'user_based_score'] = user_based_scores
+
+        # Calculate final scores using weights
+        scores_df['final_score'] = (
+            CONTENT_WEIGHT * scores_df['content_score'] +
+            USER_BASED_WEIGHT * scores_df['user_based_score']
+        )
+
+        return scores_df
+    except Exception as e:
+        print(f"Error in combine_and_score_articles: {str(e)}")
+        return pd.DataFrame()
 
 
-def get_top_articles(scores_df, articles_df, n=N_RECOMMENDATIONS):
-    """Get top n articles with their titles and scores"""
-    top_df = scores_df.sort_values('final_score', ascending=False).head(n)
-    return {
-        'article_ids': top_df.index.tolist(),
-        'titles': get_article_titles(top_df.index, articles_df),
-        'scores': top_df['final_score'].tolist()
-    }
-
-
-def hybrid_recommendations(users, curr_date):
+def compute_recommendations_for_users(
+    users: np.ndarray,
+    curr_date: datetime,
+    n_recommendations: int = 10,
+    n_candidates: int = 50,
+    content_use_lda: bool = True,
+    content_n_topics: int = 57,
+    similarity_threshold: float = 0.2,
+    neighborhood_size: int = 10
+):
     """
-    Generate hybrid recommendations combining collaborative filtering and baseline approaches.
+    Compute hybrid recommendations combining content-based and user-based approaches.
 
-    Args:
-        users: List of user IDs
-        curr_date: Current date for baseline recommendations
+    Parameters:
+        users (np.ndarray): Array of user IDs for whom to compute recommendations.
+        curr_date (datetime): Current date for recommendations.
+        n_recommendations (int): Number of recommendations to return for each user.
+        n_candidates (int): Number of candidate articles to consider from each method.
+        content_use_lda (bool): Whether to use LDA in content-based.
+        content_n_topics (int): Number of topics for content-based LDA.
+        similarity_threshold (float): Threshold for user similarity in user-based.
+        neighborhood_size (int): Size of the neighborhood in user-based.
 
     Returns:
-        DataFrame with recommendations for each user
+        pd.DataFrame: DataFrame of recommended articles for each user.
     """
-    # Load data
-    articles_df = pd.read_parquet(
-        "./data/articles.parquet").set_index('article_id')
-    behaviors_df = pd.read_parquet("./data/train/behaviors.parquet")
+    try:
+        # Load data
+        behaviors_df = pd.read_parquet("./data/train/behaviors.parquet")
+        if not behaviors_df.index.name == 'user_id':
+            behaviors_df = behaviors_df.set_index('user_id')
 
-    # Get recommendations from both methods
-    collab_recommendations = compute_recommendations_for_users(
-        users, behaviors_df, N_CANDIDATES, 0.2, 10)
-    baseline_articles = baseline("./data/articles.parquet", curr_date)
+        # Get recommendations from both methods
+        content_recs = content_recommendations(
+            users,
+            n_recommendations=n_candidates,
+            curr_date=curr_date,
+            use_lda=content_use_lda,
+            n_topics=content_n_topics
+        )
 
-    # Generate recommendations for each user
-    results = []
-    for user in users:
-        user_collab_articles = collab_recommendations.loc[user]["recommended_article_ids"]
-        scores_df = combine_and_score_articles(
-            user_collab_articles, baseline_articles)
-        recommendations = get_top_articles(scores_df, articles_df)
+        user_based_recs = user_based_recommendations(
+            users,
+            behaviors_df,
+            n_recommendations=n_candidates,
+            similarity_threshold=similarity_threshold,
+            neighborhood_size=neighborhood_size
+        )
 
-        results.append({
-            'user_id': user,
-            'recommended_article_ids': recommendations['article_ids'],
-            'article_titles': recommendations['titles'],
-            'scores': recommendations['scores']
-        })
+        # Generate recommendations for each user
+        results = []
+        for user in users:
+            if user in content_recs.index and user in user_based_recs.index:
+                scores_df = combine_and_score_articles(
+                    content_recs.loc[user]["recommended_article_ids"],
+                    user_based_recs.loc[user]["recommended_article_ids"]
+                )
 
-    return pd.DataFrame(results).set_index('user_id')
+                if not scores_df.empty:
+                    # Get top n recommendations
+                    top_articles = scores_df.nlargest(
+                        n_recommendations, 'final_score').index.tolist()
+
+                    results.append({
+                        'user_id': user,
+                        'recommended_article_ids': top_articles
+                    })
+                    if "DEBUG" in os.environ:
+                        print(f"Calculated recommendations for user: {user}")
+
+        return pd.DataFrame(results).set_index('user_id')
+
+    except Exception as e:
+        print(f"Error in compute_recommendations_for_users: {str(e)}")
+        return pd.DataFrame()
 
 
 def main():
-    curr_date = datetime.date(2023, 6, 8)
-    test_users = [10701]
+    curr_date = datetime.datetime(2023, 6, 8)
+    test_users = np.array([10701])
 
-    print(f"\nTesting with collaborative weight: {COLLABORATIVE_WEIGHT}")
-    recommendations = hybrid_recommendations(test_users, curr_date)
-
-    print("\nHybrid Recommendations:")
-    for user_id, row in recommendations.iterrows():
-        print(f"\nRecommendations for user {user_id}:")
-        for article_id, title, score in zip(
-            row['recommended_article_ids'],
-            row['article_titles'],
-            row['scores']
-        ):
-            print(f"- Article {article_id} (score: {score:.3f}): {title}")
+    print(
+        f"\nTesting with weights: Content={CONTENT_WEIGHT}, User-based={USER_BASED_WEIGHT}")
+    recommendations = compute_recommendations_for_users(test_users, curr_date)
+    print(recommendations)
 
 
 if __name__ == "__main__":
