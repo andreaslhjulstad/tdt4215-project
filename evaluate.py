@@ -160,7 +160,7 @@ def main():
         elif method == "mat":
             time_window = datetime.timedelta(days=30)
             recommendations_df = MF.compute_recommendations_for_users(
-                user_sample,
+                users,
                 behaviors,
                 n_recommendations=10,
                 n_factors=20,

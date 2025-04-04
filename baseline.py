@@ -46,7 +46,7 @@ def compute_recommendations_for_users(users: np.ndarray, curr_date: datetime, n_
         
     # Sort by pageviews (published time as tiebreaker) and 
     df = df.sort_values(by=["total_pageviews", "published_time"], inplace=False, ascending=False)
-    df = df.head(n_recommendations + 10)
+    df = df.head(2*n_recommendations)
 
     # Create new column that calculates the average read time per view
     df["read_time_per_view"] = df["total_read_time"]/df["total_pageviews"]
