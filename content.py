@@ -205,6 +205,7 @@ def recommend_for_user(
 def compute_recommendations_for_users(
     users: np.ndarray,
     n_recommendations: int,
+    curr_date: datetime,
     n_topics: int = 20,
     n_days=15,
     use_lda=False,
@@ -215,7 +216,9 @@ def compute_recommendations_for_users(
     Recommends n_recommendations articles for a given set of users based on the similarity of articles they have read.
 
     Parameters:
+        users (np.ndarray): Array of users to recommend for.
         n_recommendations (int): Number of recommendations to compute for each user.
+        curr_date (datetime): Starting date for recommendations.
         n_topics (int): Number of topics to use for LDA, if applicable.
         n_days (int): Number of days to include (backwards from set date) in recency filter, default=15.
         use_lda (bool): Boolean to decide whether to use LDA or BoW, default=False.
@@ -226,7 +229,6 @@ def compute_recommendations_for_users(
         pd.dataframe: Dataframe of recommended articles.
     """
 
-    curr_date = datetime.date(2023, 6, 8)
     history = pd.read_parquet("./data/train/history.parquet").set_index("user_id")
     articles = pd.read_parquet("./data/articles.parquet")
     articles_filtered = pd.read_parquet(
