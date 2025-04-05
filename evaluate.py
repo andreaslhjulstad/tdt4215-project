@@ -128,9 +128,9 @@ def main():
     tracker.start()
 
     method = ""
-    while method != "bow" or method != "lda" or method != "knn" or method != "mat" or method != "bas":
-        method = input("Please select a method (bow, lda, knn, mat or bas): ")
-        if method == "bow":
+    while method != "tfi" or method != "lda" or method != "knn" or method != "mat" or method != "bas":
+        method = input("Please select a method (tfi, lda, knn, mat or bas): ")
+        if method == "tfi":
             # Compute recommendations for the user sample
             recommendations_df = CB.compute_recommendations_for_users(
                 users, 
