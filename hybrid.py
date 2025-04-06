@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from content import compute_recommendations_for_users as content_recommendations
 from user_based import compute_recommendations_for_users as user_based_recommendations
+from baseline import compute_recommendations_for_users as baseline_recommendations
 
 # Constants - weights should sum to 1
 CONTENT_WEIGHT = 0.5
@@ -92,9 +93,30 @@ def compute_recommendations_for_users(
         if not behaviors_df.index.name == 'user_id':
             behaviors_df = behaviors_df.set_index('user_id')
 
-        # Get recommendations from both methods
+        # Check for cold start - if user has no behavior data, use baseline
+        active_users = behaviors_df.index
+        cold_start_users = [user for user in users if user not in active_users]
+        warm_users = [user for user in users if user in active_users]
+
+        # Handle cold start users with baseline
+        if cold_start_users:
+            if "DEBUG" in os.environ:
+                print(
+                    f"Using baseline for {len(cold_start_users)} cold start users")
+            cold_start_recs = baseline_recommendations(
+                np.array(cold_start_users),
+                curr_date,
+                n_days=30,
+                n_recommendations=n_recommendations
+            )
+
+        # If we only have cold start users, return baseline recommendations
+        if not warm_users:
+            return cold_start_recs
+
+        # Get recommendations from both methods for warm users
         content_recs = content_recommendations(
-            users,
+            np.array(warm_users),
             n_recommendations=n_candidates,
             curr_date=curr_date,
             use_lda=content_use_lda,
@@ -102,16 +124,16 @@ def compute_recommendations_for_users(
         )
 
         user_based_recs = user_based_recommendations(
-            users,
+            np.array(warm_users),
             behaviors_df,
             n_recommendations=n_candidates,
             similarity_threshold=similarity_threshold,
             neighborhood_size=neighborhood_size
         )
 
-        # Generate recommendations for each user
+        # Generate recommendations for warm users
         results = []
-        for user in users:
+        for user in warm_users:
             if user in content_recs.index and user in user_based_recs.index:
                 scores_df = combine_and_score_articles(
                     content_recs.loc[user]["recommended_article_ids"],
@@ -119,7 +141,6 @@ def compute_recommendations_for_users(
                 )
 
                 if not scores_df.empty:
-                    # Get top n recommendations
                     top_articles = scores_df.nlargest(
                         n_recommendations, 'final_score').index.tolist()
 
@@ -128,9 +149,14 @@ def compute_recommendations_for_users(
                         'recommended_article_ids': top_articles
                     })
                     if "DEBUG" in os.environ:
-                        print(f"Calculated recommendations for user: {user}")
+                        print(
+                            f"Calculated hybrid recommendations for user: {user}")
 
-        return pd.DataFrame(results).set_index('user_id')
+        # Combine warm and cold start recommendations
+        warm_recs = pd.DataFrame(results).set_index('user_id')
+        if cold_start_users:
+            return pd.concat([warm_recs, cold_start_recs])
+        return warm_recs
 
     except Exception as e:
         print(f"Error in compute_recommendations_for_users: {str(e)}")
@@ -139,7 +165,7 @@ def compute_recommendations_for_users(
 
 def main():
     curr_date = datetime.datetime(2023, 6, 8)
-    test_users = np.array([10701])
+    test_users = np.array([10701, 5643])
 
     print(
         f"\nTesting with weights: Content={CONTENT_WEIGHT}, User-based={USER_BASED_WEIGHT}")

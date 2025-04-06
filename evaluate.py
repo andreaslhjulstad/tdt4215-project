@@ -120,7 +120,7 @@ def main():
     current_date = datetime.datetime(2023, 6, 8)  # Chosen date for scenario
 
     # Determine sampling here!
-    sample_users = True
+    sample_users = False
 
     if sample_users:
         # Select users at random
